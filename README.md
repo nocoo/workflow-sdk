@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/brand/icon.png" alt="@nocoo/workflow-sdk" width="160">
+</p>
+
 # @nocoo/workflow-sdk
 
 TypeScript Agent & Workflow SDK aligned with the `google-antigravity` Python SDK, supporting two swappable execution kernels:
