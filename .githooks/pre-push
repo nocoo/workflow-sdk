@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Read pre-push stdin; skip source checks on branch/tag deletion
+has_push_target=false
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [[ "$local_sha" != "0000000000000000000000000000000000000000" ]]; then
+    has_push_target=true
+  fi
+done
+
+if [[ "$has_push_target" == "false" ]]; then
+  exit 0
+fi
+
+echo "[pre-push] B1: Build"
+bun run build
+
+echo "[pre-push] P1: Package tarball smoke check"
+TMP_PKG_DIR="$(mktemp -d)"
+trap 'rm -rf "$TMP_PKG_DIR"' EXIT
+TARBALL="$(npm pack --pack-destination "$TMP_PKG_DIR" | tail -n 1)"
+test -f "$TMP_PKG_DIR/$TARBALL"
+
+if command -v osv-scanner >/dev/null 2>&1; then
+  echo "[pre-push] G2: Dependency vulnerability scan"
+  osv-scanner scan --lockfile=bun.lock || true
+fi

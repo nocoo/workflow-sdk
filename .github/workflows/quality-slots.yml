@@ -1,0 +1,177 @@
+name: Quality Slots
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  s1-types:
+    name: "S1: Types"
+    runs-on: ubuntu-latest
+    outputs:
+      tested-sha: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: nocoo/base-ci/.github/actions/setup-js@777bbe4f9bacab8a91d8c01974480a6ee23d28e0  # v2026.15
+        with:
+          package-manager: bun
+      - run: bun run typecheck
+
+  s2-lint:
+    name: "S2: Lint"
+    runs-on: ubuntu-latest
+    outputs:
+      tested-sha: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: nocoo/base-ci/.github/actions/setup-js@777bbe4f9bacab8a91d8c01974480a6ee23d28e0  # v2026.15
+        with:
+          package-manager: bun
+      - run: bun run lint
+
+  s3-workflow:
+    name: "S3: Workflow"
+    runs-on: ubuntu-latest
+    outputs:
+      tested-sha: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify base-ci SHA pins
+        run: |
+          grep -q '777bbe4f9bacab8a91d8c01974480a6ee23d28e0  # v2026.15' .github/workflows/quality-slots.yml
+
+  g1-secrets:
+    name: "G1: Secrets"
+    runs-on: ubuntu-latest
+    outputs:
+      tested-sha: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: nocoo/base-ci/.github/actions/setup-security-scanners@777bbe4f9bacab8a91d8c01974480a6ee23d28e0  # v2026.15
+      - run: gitleaks detect --source . --no-banner --redact
+
+  g2-dependencies:
+    name: "G2: Dependencies"
+    runs-on: ubuntu-latest
+    outputs:
+      tested-sha: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: nocoo/base-ci/.github/actions/setup-security-scanners@777bbe4f9bacab8a91d8c01974480a6ee23d28e0  # v2026.15
+      - run: osv-scanner scan --lockfile=bun.lock
+
+  b1-build:
+    name: "B1: Build"
+    runs-on: ubuntu-latest
+    outputs:
+      tested-sha: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: nocoo/base-ci/.github/actions/setup-js@777bbe4f9bacab8a91d8c01974480a6ee23d28e0  # v2026.15
+        with:
+          package-manager: bun
+      - run: bun run build
+
+  l1-unit:
+    name: "L1: Unit"
+    runs-on: ubuntu-latest
+    outputs:
+      tested-sha: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: nocoo/base-ci/.github/actions/setup-js@777bbe4f9bacab8a91d8c01974480a6ee23d28e0  # v2026.15
+        with:
+          package-manager: bun
+      - run: bun run test:coverage
+
+  l2-runtime:
+    name: "L2: Runtime"
+    runs-on: ubuntu-latest
+    if: "false"
+    outputs:
+      tested-sha: ${{ github.sha }}
+    steps:
+      - run: echo "N/A - no platform runtime bindings"
+
+  l3-integration:
+    name: "L3: Integration"
+    runs-on: ubuntu-latest
+    outputs:
+      tested-sha: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: nocoo/base-ci/.github/actions/setup-js@777bbe4f9bacab8a91d8c01974480a6ee23d28e0  # v2026.15
+        with:
+          package-manager: bun
+      - run: bun run test
+
+  l4-e2e:
+    name: "L4: E2E"
+    runs-on: ubuntu-latest
+    if: "false"
+    outputs:
+      tested-sha: ${{ github.sha }}
+    steps:
+      - run: echo "Manual E2E via local Magpie gateway"
+
+  p1-package:
+    name: "P1: Package"
+    runs-on: ubuntu-latest
+    needs: [b1-build]
+    outputs:
+      tested-sha: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: nocoo/base-ci/.github/actions/setup-js@777bbe4f9bacab8a91d8c01974480a6ee23d28e0  # v2026.15
+        with:
+          package-manager: bun
+      - run: |
+          bun run build
+          PKG="$(npm pack)"
+          mkdir -p /tmp/pkg-smoke && cd /tmp/pkg-smoke
+          npm init -y >/dev/null
+          npm install "$GITHUB_WORKSPACE/$PKG"
+          node --input-type=module -e 'import * as sdk from "@nocoo/workflow-sdk"; if (!sdk.Agent || !sdk.LocalOpenAIAgentConfig) process.exit(1);'
+
+  z1-gate:
+    name: "Z1: Gate"
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - s1-types
+      - s2-lint
+      - s3-workflow
+      - g1-secrets
+      - g2-dependencies
+      - b1-build
+      - l1-unit
+      - l2-runtime
+      - l3-integration
+      - l4-e2e
+      - p1-package
+    steps:
+      - name: Verify required slots
+        run: |
+          for res in \
+            "${{ needs.s1-types.result }}" \
+            "${{ needs.s2-lint.result }}" \
+            "${{ needs.s3-workflow.result }}" \
+            "${{ needs.g1-secrets.result }}" \
+            "${{ needs.g2-dependencies.result }}" \
+            "${{ needs.b1-build.result }}" \
+            "${{ needs.l1-unit.result }}" \
+            "${{ needs.l3-integration.result }}" \
+            "${{ needs.p1-package.result }}"; do
+            if [ "$res" != "success" ]; then
+              echo "Required slot failed or skipped: $res"
+              exit 1
+            fi
+          done
+          if [ "${{ needs.l2-runtime.result }}" != "skipped" ] || [ "${{ needs.l4-e2e.result }}" != "skipped" ]; then
+            echo "N/A slot must be skipped"
+            exit 1
+          fi
