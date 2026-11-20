@@ -131,10 +131,10 @@ jobs:
           package-manager: bun
       - run: |
           bun run build
-          PKG="$(npm pack)"
+          PKG="$(npm pack --ignore-scripts | tail -n 1)"
           mkdir -p /tmp/pkg-smoke && cd /tmp/pkg-smoke
           npm init -y >/dev/null
-          npm install "$GITHUB_WORKSPACE/$PKG"
+          npm install --ignore-scripts "$GITHUB_WORKSPACE/$PKG"
           node --input-type=module -e 'import * as sdk from "@nocoo/workflow-sdk"; if (!sdk.Agent || !sdk.LocalOpenAIAgentConfig) process.exit(1);'
 
   z1-gate:
