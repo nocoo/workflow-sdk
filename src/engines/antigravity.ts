@@ -119,9 +119,7 @@ export class AntigravityEngine<T = unknown> implements EngineAdapter<T> {
     } catch {
       // Process may have already exited
     } finally {
-      if (this.proc && !this.proc.killed) {
-        this.proc.kill();
-      }
+      this.proc?.kill();
       this.proc = null;
     }
   }

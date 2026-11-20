@@ -166,8 +166,8 @@ describe("AntigravityEngine (stdio JSON-RPC bridge)", () => {
     await engine.start(); // idempotent start
     await expect(engine.chat("hello")).rejects.toThrow("Gateway unavailable");
 
-    // Simulate blank line chunk and mid-flight process crash rejecting pending request
-    fakeProc.stdout.write("\n");
+    // Simulate blank line chunk, unknown RPC id, and mid-flight process crash rejecting pending request
+    fakeProc.stdout.write('\n{"id":999999,"result":{}}\n');
     const inflight = engine.chat("mid-flight");
     fakeProc.stderr.write("fatal python traceback");
     fakeProc.emit("close", 1);
@@ -183,7 +183,7 @@ describe("AntigravityEngine (stdio JSON-RPC bridge)", () => {
       description: "Always throws",
       inputSchema: z.object({}),
       execute: async () => {
-        throw new Error("boom");
+        throw "string boom";
       },
     });
 
@@ -233,8 +233,40 @@ describe("AntigravityEngine (stdio JSON-RPC bridge)", () => {
     expect(initPayload.project).toBe("my-proj");
     expect(toolErrors).toEqual([
       { id: 7001, error: { message: "Unknown tool 'missing_tool'" } },
-      { id: 7002, error: { message: "boom" } },
+      { id: 7002, error: { message: "string boom" } },
     ]);
     await engine.close();
+  });
+
+  it("handles process exit error without stderr and missing rpc error message", async () => {
+    const cfg = new LocalOpenAIAgentConfig({
+      baseUrl: "http://127.0.0.1:1/v1",
+      model: "m",
+    });
+    const fakeProc = createFakeBridgeProcess({
+      onChat: (params, send, reqId) => {
+        if (params.prompt === "hi") {
+          send({ id: reqId, error: {} });
+        } else if (params.prompt === "empty") {
+          send({ id: reqId, result: {} });
+        }
+      },
+    });
+    const engine = new AntigravityEngine(cfg, { spawnFn: () => fakeProc as never });
+    await engine.start();
+    const emptyRes = await engine.chat("empty");
+    expect(emptyRes.text).toBe("");
+    await expect(engine.chat("hi")).rejects.toThrow("Antigravity bridge RPC error");
+
+    const inflight = engine.chat("hang");
+    fakeProc.emit("close", 1);
+    await expect(inflight).rejects.toThrow("Antigravity bridge exited (code=1)");
+
+    // Also cover normal close() calling proc.kill() when bridge hasn't exited on its own
+    const proc2 = createFakeBridgeProcess({});
+    const engine2 = new AntigravityEngine(cfg, { spawnFn: () => proc2 as never });
+    await engine2.start();
+    await engine2.close();
+    expect(proc2.killed).toBe(true);
   });
 });
