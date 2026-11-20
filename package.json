@@ -3,6 +3,18 @@
   "version": "0.1.0",
   "description": "TypeScript Workflow & Agent SDK with dual kernels: Antigravity (primary) and pure-TS Vercel AI SDK",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nocoo/workflow-sdk.git"
+  },
+  "homepage": "https://github.com/nocoo/workflow-sdk#readme",
+  "bugs": {
+    "url": "https://github.com/nocoo/workflow-sdk/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
