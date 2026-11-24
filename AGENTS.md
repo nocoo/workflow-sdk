@@ -10,9 +10,9 @@ TypeScript Agent & Workflow SDK with dual execution kernels:
 - `python/`: Bundled PEP 723 stdio bridge (`bridge.py`) invoked by the Antigravity kernel.
 - `tests/`: Vitest unit and integration suites (`*.test.ts`).
 - `.githooks/`: Local Git hooks (`pre-commit`, `pre-push`), activated via `bun run prepare`.
-- `.github/workflows/`: Native `base-ci` (`v2026.15`) quality workflow (`ci.yml` + `quality-slots.yml`).
+- `.github/workflows/`: Native `base-ci` (`v2026.16`) quality workflow (`ci.yml` + `quality-slots.yml`).
 
-## Quality System (`system1-quality 1.3.0` + `base-ci v2026.15`)
+## Quality System (`system1-quality 1.3.0` + `base-ci v2026.16`)
 
 All checks run in check-only mode without mutating tracked files.
 

@@ -10,123 +10,188 @@ jobs:
   s1-types:
     name: "S1: Types"
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
-      tested-sha: ${{ github.sha }}
+      tested-sha: ${{ steps.record-sha.outputs.sha }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: nocoo/base-ci/.github/actions/setup-js@777bbe4f9bacab8a91d8c01974480a6ee23d28e0  # v2026.15
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: nocoo/base-ci/.github/actions/setup-js@6424d395d36a815d931f10e557762eb635d511c0 # v2026.16
         with:
           package-manager: bun
       - run: bun run typecheck
+      - name: Record tested SHA
+        id: record-sha
+        if: always()
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   s2-lint:
     name: "S2: Lint"
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
-      tested-sha: ${{ github.sha }}
+      tested-sha: ${{ steps.record-sha.outputs.sha }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: nocoo/base-ci/.github/actions/setup-js@777bbe4f9bacab8a91d8c01974480a6ee23d28e0  # v2026.15
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: nocoo/base-ci/.github/actions/setup-js@6424d395d36a815d931f10e557762eb635d511c0 # v2026.16
         with:
           package-manager: bun
       - run: bun run lint
+      - name: Record tested SHA
+        id: record-sha
+        if: always()
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   s3-workflow:
     name: "S3: Workflow"
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
-      tested-sha: ${{ github.sha }}
+      tested-sha: ${{ steps.record-sha.outputs.sha }}
     steps:
-      - uses: actions/checkout@v4
-      - name: Verify base-ci SHA pins
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Verify external SHA pins
         run: |
-          grep -q '777bbe4f9bacab8a91d8c01974480a6ee23d28e0  # v2026.15' .github/workflows/quality-slots.yml
+          python3 - <<'PY'
+          import pathlib, re, yaml
+          for path in sorted(pathlib.Path(".github/workflows").glob("*.y*ml")):
+              data = yaml.safe_load(path.read_text()) or {}
+              for job in (data.get("jobs") or {}).values():
+                  for item in [job, *(job.get("steps") or [])]:
+                      ref = item.get("uses", "")
+                      if not ref or ref.startswith("./"):
+                          continue
+                      if not re.fullmatch(r"[^@]+@[a-f0-9]{40}", ref):
+                          raise SystemExit(f"Unpinned external reference in {path}: {ref}")
+          PY
+      - name: Record tested SHA
+        id: record-sha
+        if: always()
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   g1-secrets:
     name: "G1: Secrets"
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
-      tested-sha: ${{ github.sha }}
+      tested-sha: ${{ steps.record-sha.outputs.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
-      - uses: nocoo/base-ci/.github/actions/setup-security-scanners@777bbe4f9bacab8a91d8c01974480a6ee23d28e0  # v2026.15
+      - uses: nocoo/base-ci/.github/actions/setup-security-scanners@6424d395d36a815d931f10e557762eb635d511c0 # v2026.16
       - run: gitleaks detect --source . --no-banner --redact
+      - name: Record tested SHA
+        id: record-sha
+        if: always()
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   g2-dependencies:
     name: "G2: Dependencies"
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
-      tested-sha: ${{ github.sha }}
+      tested-sha: ${{ steps.record-sha.outputs.sha }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: nocoo/base-ci/.github/actions/setup-security-scanners@777bbe4f9bacab8a91d8c01974480a6ee23d28e0  # v2026.15
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: nocoo/base-ci/.github/actions/setup-security-scanners@6424d395d36a815d931f10e557762eb635d511c0 # v2026.16
       - run: osv-scanner scan --lockfile=bun.lock
+      - name: Record tested SHA
+        id: record-sha
+        if: always()
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   b1-build:
     name: "B1: Build"
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
-      tested-sha: ${{ github.sha }}
+      tested-sha: ${{ steps.record-sha.outputs.sha }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: nocoo/base-ci/.github/actions/setup-js@777bbe4f9bacab8a91d8c01974480a6ee23d28e0  # v2026.15
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: nocoo/base-ci/.github/actions/setup-js@6424d395d36a815d931f10e557762eb635d511c0 # v2026.16
         with:
           package-manager: bun
       - run: bun run build
+      - name: Record tested SHA
+        id: record-sha
+        if: always()
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   l1-unit:
     name: "L1: Unit"
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
-      tested-sha: ${{ github.sha }}
+      tested-sha: ${{ steps.record-sha.outputs.sha }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: nocoo/base-ci/.github/actions/setup-js@777bbe4f9bacab8a91d8c01974480a6ee23d28e0  # v2026.15
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: nocoo/base-ci/.github/actions/setup-js@6424d395d36a815d931f10e557762eb635d511c0 # v2026.16
         with:
           package-manager: bun
       - run: bun run test:coverage
+      - name: Record tested SHA
+        id: record-sha
+        if: always()
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   l2-runtime:
     name: "L2: Runtime"
     runs-on: ubuntu-latest
-    if: "false"
-    outputs:
-      tested-sha: ${{ github.sha }}
+    if: ${{ vars.ENABLE_L2 == 'true' }}
     steps:
       - run: echo "N/A - no platform runtime bindings"
 
   l3-integration:
     name: "L3: Integration"
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
-      tested-sha: ${{ github.sha }}
+      tested-sha: ${{ steps.record-sha.outputs.sha }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: nocoo/base-ci/.github/actions/setup-js@777bbe4f9bacab8a91d8c01974480a6ee23d28e0  # v2026.15
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: nocoo/base-ci/.github/actions/setup-js@6424d395d36a815d931f10e557762eb635d511c0 # v2026.16
         with:
           package-manager: bun
       - run: bun run test
+      - name: Record tested SHA
+        id: record-sha
+        if: always()
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   l4-e2e:
     name: "L4: E2E"
     runs-on: ubuntu-latest
-    if: "false"
-    outputs:
-      tested-sha: ${{ github.sha }}
+    if: ${{ vars.ENABLE_L4 == 'true' }}
     steps:
       - run: echo "Manual E2E via local Magpie gateway"
 
   p1-package:
     name: "P1: Package"
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: [b1-build]
     outputs:
-      tested-sha: ${{ github.sha }}
+      tested-sha: ${{ steps.record-sha.outputs.sha }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: nocoo/base-ci/.github/actions/setup-js@777bbe4f9bacab8a91d8c01974480a6ee23d28e0  # v2026.15
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: nocoo/base-ci/.github/actions/setup-js@6424d395d36a815d931f10e557762eb635d511c0 # v2026.16
         with:
           package-manager: bun
       - run: |
@@ -136,10 +201,15 @@ jobs:
           npm init -y >/dev/null
           npm install --ignore-scripts "$GITHUB_WORKSPACE/$PKG"
           node --input-type=module -e 'import * as sdk from "@nocoo/workflow-sdk"; if (!sdk.Agent || !sdk.LocalOpenAIAgentConfig) process.exit(1);'
+      - name: Record tested SHA
+        id: record-sha
+        if: always()
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   z1-gate:
     name: "Z1: Gate"
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     if: always()
     needs:
       - s1-types
@@ -154,7 +224,19 @@ jobs:
       - l4-e2e
       - p1-package
     steps:
-      - name: Verify required slots
+      - name: Verify required slots and tested SHA
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          SHAS: >-
+            ${{ needs.s1-types.outputs.tested-sha }}
+            ${{ needs.s2-lint.outputs.tested-sha }}
+            ${{ needs.s3-workflow.outputs.tested-sha }}
+            ${{ needs.g1-secrets.outputs.tested-sha }}
+            ${{ needs.g2-dependencies.outputs.tested-sha }}
+            ${{ needs.b1-build.outputs.tested-sha }}
+            ${{ needs.l1-unit.outputs.tested-sha }}
+            ${{ needs.l3-integration.outputs.tested-sha }}
+            ${{ needs.p1-package.outputs.tested-sha }}
         run: |
           for res in \
             "${{ needs.s1-types.result }}" \
@@ -175,3 +257,9 @@ jobs:
             echo "N/A slot must be skipped"
             exit 1
           fi
+          for sha in $SHAS; do
+            if [ "$sha" != "$EXPECTED_SHA" ]; then
+              echo "tested-sha mismatch: got '$sha', expected '$EXPECTED_SHA'"
+              exit 1
+            fi
+          done
