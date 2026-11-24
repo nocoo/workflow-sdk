@@ -1,22 +1,124 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "[pre-commit] S1: Typecheck"
-bun run typecheck
+command -v git >/dev/null 2>&1 || { echo "pre-commit: git is required" >&2; exit 1; }
+command -v bun >/dev/null 2>&1 || { echo "pre-commit: bun is required" >&2; exit 1; }
+command -v gitleaks >/dev/null 2>&1 || { echo "pre-commit: gitleaks is required" >&2; exit 1; }
 
-echo "[pre-commit] S2: Lint & Format (Biome)"
-bun run lint
+echo "[pre-commit] G1: Secrets scan (staged)"
+gitleaks protect --staged --no-banner --redact
 
-echo "[pre-commit] L1: Unit Tests & Coverage (95% threshold)"
-bun run test:coverage
+repo=$(git rev-parse --show-toplevel)
+snapshot=""
+lane_pids=""
+watchdog_pid=""
 
-if command -v gitleaks >/dev/null 2>&1; then
-  echo "[pre-commit] G1: Secrets scan (staged)"
-  gitleaks protect --staged --no-banner --redact
-else
-  echo "[pre-commit] G1: gitleaks not installed; running built-in staged pattern check"
-  if git diff --cached --diff-filter=ACMR -U0 | grep -E '^\+.*(gho_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,}|xray_pt_[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{30,})' >/dev/null; then
-    echo "Error: Potential secret detected in staged changes!" >&2
+kill_tree() {
+  local pid="$1"
+  [ -n "$pid" ] || return 0
+  if command -v pkill >/dev/null 2>&1; then
+    pkill -TERM -P "$pid" >/dev/null 2>&1 || true
+  fi
+  kill -TERM "$pid" >/dev/null 2>&1 || true
+}
+
+cleanup() {
+  local status=$?
+  trap - EXIT INT TERM HUP
+  if [ -n "$watchdog_pid" ]; then
+    kill_tree "$watchdog_pid"
+    watchdog_pid=""
+  fi
+  for pid in $lane_pids; do
+    kill_tree "$pid"
+  done
+  for pid in $lane_pids; do
+    wait "$pid" >/dev/null 2>&1 || true
+  done
+  if [ -n "$snapshot" ]; then
+    rm -rf "$snapshot" || true
+    snapshot=""
+  fi
+  exit "$status"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
+
+snapshot=$(mktemp -d "${TMPDIR:-/tmp}/workflow-sdk-index-XXXXXX")
+git checkout-index --all --prefix="$snapshot/"
+
+if [ ! -d "$repo/node_modules" ]; then
+  echo "pre-commit: node_modules is required — run 'bun install --frozen-lockfile'" >&2
+  exit 1
+fi
+for f in package.json bun.lock; do
+  if [ ! -f "$snapshot/$f" ]; then
+    echo "pre-commit: staged $f is required" >&2
     exit 1
   fi
+  if ! cmp -s "$snapshot/$f" "$repo/$f"; then
+    echo "pre-commit: staged $f differs from the worktree copy — stage installed state before committing" >&2
+    exit 1
+  fi
+done
+if ! (cd "$snapshot" && bun install --frozen-lockfile --dry-run --ignore-scripts >/dev/null 2>&1); then
+  echo "pre-commit: staged package.json/bun.lock are out of sync — run 'bun install' and commit updated bun.lock" >&2
+  exit 1
 fi
+
+rm -rf "$snapshot/node_modules"
+ln -s "$repo/node_modules" "$snapshot/node_modules"
+
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX
+unset GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
+export PATH="$snapshot/node_modules/.bin:$PATH"
+cd "$snapshot"
+
+timeout_sec=${WORKFLOW_SDK_L1_TIMEOUT_SEC:-60}
+logs_dir="$snapshot/.hook-logs"
+mkdir -p "$logs_dir"
+
+bun run typecheck >"$logs_dir/s1.log" 2>&1 &
+s1_pid=$!
+bun run lint >"$logs_dir/s2.log" 2>&1 &
+s2_pid=$!
+bun run test:coverage >"$logs_dir/l1.log" 2>&1 &
+l1_pid=$!
+
+lane_pids="$s1_pid $s2_pid $l1_pid"
+
+if [ "$timeout_sec" -gt 0 ] 2>/dev/null; then
+  parent_pid=$$
+  (
+    sleep "$timeout_sec"
+    echo "pre-commit: exceeded ${timeout_sec}s timeout" >&2
+    kill -TERM "$parent_pid" >/dev/null 2>&1 || true
+  ) &
+  watchdog_pid=$!
+fi
+
+set +e
+wait "$s1_pid"; s1_rc=$?
+wait "$s2_pid"; s2_rc=$?
+wait "$l1_pid"; l1_rc=$?
+set -e
+lane_pids=""
+
+if [ -n "$watchdog_pid" ]; then
+  kill_tree "$watchdog_pid"
+  wait "$watchdog_pid" >/dev/null 2>&1 || true
+  watchdog_pid=""
+fi
+
+for lane in s1 s2 l1; do
+  cat "$logs_dir/${lane}.log"
+done
+
+if [ "$s1_rc" -ne 0 ] || [ "$s2_rc" -ne 0 ] || [ "$l1_rc" -ne 0 ]; then
+  echo "pre-commit: failed (s1=$s1_rc s2=$s2_rc l1=$l1_rc)" >&2
+  exit 1
+fi
+
+echo "[pre-commit] OK: S1 + S2 + L1 passed on staged index snapshot"
