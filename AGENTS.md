@@ -10,9 +10,9 @@ TypeScript Agent & Workflow SDK with dual execution kernels:
 - `python/`: Bundled PEP 723 stdio bridge (`bridge.py`) invoked by the Antigravity kernel.
 - `tests/`: Vitest unit and integration suites (`*.test.ts`).
 - `.githooks/`: Local Git hooks (`pre-commit`, `pre-push`), activated via `bun run prepare`.
-- `.github/workflows/`: Native `base-ci` (`v2026.17`) quality workflow (`ci.yml` + `quality-slots.yml`).
+- `.github/workflows/`: Native `base-ci` (`v2026.18`) quality workflow (`ci.yml` + `quality-slots.yml`).
 
-## Quality System (`system1-quality 1.3.0` + `base-ci v2026.17`)
+## Quality System (`system1-quality 1.3.0` + `base-ci v2026.18`)
 
 All checks run in check-only mode without mutating tracked files.
 
@@ -34,9 +34,9 @@ bun run verify          # Full local verification pipeline
 | B1 Build | Pre-push, CI | `bun run build` | enforced |
 | L1 Unit | Pre-commit, CI | `vitest run --coverage` (95% statements/branches/functions/lines) | enforced |
 | L2 Runtime | — | No platform runtime bindings required | N/A |
-| L3 Integration | Pre-push, CI | Local HTTP mock OpenAI & stdio bridge integration suite | enforced |
+| L3 Integration | — | Covered by `L1 Unit` Vitest suite (stub skipped in CI) | N/A |
 | L4 E2E | Manual | Live Magpie (`http://127.0.0.1:3425/v1`) dual-kernel verification | manual |
-| P1 Package | Pre-push, CI | `npm pack` + isolated consumer import/type smoke test | enforced |
+| P1 Package | Pre-push, CI | `npm pack` + isolated consumer import/type smoke test (reuses `B1` artifact) | enforced |
 | Z1 Gate | CI | `quality / Z1: Gate` aggregating all required slots | enforced |
 
 ## Conventions
